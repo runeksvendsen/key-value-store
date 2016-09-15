@@ -37,14 +37,16 @@ data SyncState k = SyncState
 --  either updated or deleted.
 type SyncAction = IO Integer
 
-data CreateResult = Created | AlreadyExists
+data CreateResult = Created | AlreadyExists deriving (Show, Eq)
 data WriteException = PermissionDenied deriving (Show, Eq)
 instance Exception WriteException
 
 -- |
 data MapItemResult k v =
+    -- Key + new item
     ItemUpdated k v |
-    NotUpdated |
+    -- Key + old item
+    NotUpdated  k v |
     NoSuchItem
 
 -- | Types that can be serialized and deserialized

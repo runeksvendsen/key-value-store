@@ -90,19 +90,23 @@ getItem :: ToFileName k =>
     DiskMap k v -> k -> IO (Maybe v)
 getItem m = atomically . getItem' m
 
-
 -- |
 addItem :: (ToFileName k, Serializable v) =>
     DiskMap k v -> k -> v -> IO CreateResult
 addItem dm@(DiskMap _ m _ _) k v = do
     res <- fmap head $ updateMapItem dm $
-        getItem' dm k >>= maybe
-            (insertItem k v m >> return [ItemUpdated k v])  -- Doesn't already exist
-            (const $ return [NotUpdated])                 -- Already exists
+        getItem' dm k >>= updateIfNotExist
     case res of
         ItemUpdated _ _ -> return Created
-        NotUpdated  -> return AlreadyExists
-        _           -> error "BUG 20:56:49"
+        NotUpdated _ _  -> return AlreadyExists
+        NoSuchItem      -> error "BUG: 'updateIfNotExist' should never return 'NoSuchItem'"
+    where
+        updateIfNotExist maybeItem = case maybeItem of
+            Nothing   ->
+                insertItem k v m >>
+                return [ItemUpdated k v]    -- Doesn't already exist
+            Just oldV ->
+                return [NotUpdated  k oldV] -- Already exists
 
 -- |
 updateStoredItem :: (ToFileName k, Serializable v) =>
@@ -175,21 +179,21 @@ makeReadOnly (DiskMap _ _ _ readOnlyTVar) =
     atomically $ writeTVar readOnlyTVar True
 
 -- |If 'f' applied to the value at 'k' in the map returns a Just value, then update the value
---  in the map to this. Return information about what happened.
+--  in the map to this value. Return information about what happened.
 mapStoredItem :: (ToFileName k, Serializable v) =>
     DiskMap k v -> (v -> Maybe v) -> k -> STM (MapItemResult k v)
 mapStoredItem dm@(DiskMap _ m _ _) f k = do
     maybeItem <- getItem' dm k
     case maybeItem of
         Nothing  -> return NoSuchItem
-        Just val -> maybeUpdate
+        Just oldVal -> maybeUpdate
             where maybeUpdate =
-                    case f val of
+                    case f oldVal of
                         Just newVal ->
                             updateItem m k newVal >>
                             return (ItemUpdated k newVal)
                         Nothing ->
-                            return NotUpdated
+                            return (NotUpdated  k oldVal)
 
 -- | Only relevant for deferred sync
 isSynced :: DiskMap k v -> IO Bool
