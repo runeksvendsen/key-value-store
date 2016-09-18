@@ -25,7 +25,7 @@ DiskMap,
 newDiskMap, addItem, getItem, updateStoredItem,
 CreateResult(..),
 mapGetItem, mapGetItems, MapItemResult(..),
-updateIfRight,
+updateIfRight,getResult,
 getAllItems, getItemCount,
 getFilteredItems, getFilteredKeys, getFilteredKV,
 collectSortedItemsWhile,
@@ -130,14 +130,14 @@ mapGetItems dm@(DiskMap _ _ _ _) f stmKeys = updateMapItem dm $ do
 -- | Update the value at the given key if the supplied function
 --  applied to the value returns Right
 updateIfRight :: (ToFileName k, Serializable v) =>
-    DiskMap k v -> k -> (v -> Either e (v,r)) -> IO (MapItemResult k v (Either e r))
+    DiskMap k v -> k -> (v -> Either r (v,r)) -> IO (MapItemResult k v r)
 updateIfRight dm@(DiskMap _ m _ _) key updateFunc =
     head <$> updateMapItem dm (fmap (: []) stmAction)
     where
         updateOnRight oldVal = case updateFunc oldVal of
-            Left  e          -> return $ NotUpdated key oldVal (Left e)
+            Left  r          -> return $ NotUpdated key oldVal r
             Right (newVal,r) -> insertItem key newVal m >>
-                                return (ItemUpdated key newVal (Right r))
+                                return (ItemUpdated key newVal r)
         stmAction = do
             maybeVal <- getItem' dm key
             case maybeVal of
