@@ -25,6 +25,7 @@ DiskMap,
 newDiskMap, addItem, getItem, updateStoredItem,
 CreateResult(..),
 mapGetItem, mapGetItems, MapItemResult(..),
+updateIfRight,
 getAllItems, getItemCount,
 getFilteredItems, getFilteredKeys, getFilteredKV,
 collectSortedItemsWhile,
@@ -97,34 +98,51 @@ addItem dm@(DiskMap _ m _ _) k v = do
     res <- fmap head $ updateMapItem dm $
         getItem' dm k >>= updateIfNotExist
     case res of
-        ItemUpdated _ _ -> return Created
-        NotUpdated _ _  -> return AlreadyExists
-        NoSuchItem      -> error "BUG: 'updateIfNotExist' should never return 'NoSuchItem'"
+        ItemUpdated _ _ _ -> return Created
+        NotUpdated  _ _ _ -> return AlreadyExists
+        NoSuchItem        -> error "BUG: 'updateIfNotExist' should never return 'NoSuchItem'"
     where
         updateIfNotExist maybeItem = case maybeItem of
             Nothing   ->
                 insertItem k v m >>
-                return [ItemUpdated k v]    -- Doesn't already exist
+                return [ItemUpdated k v ()]    -- Doesn't already exist
             Just oldV ->
-                return [NotUpdated  k oldV] -- Already exists
+                return [NotUpdated  k oldV ()] -- Already exists
 
 -- |
 updateStoredItem :: (ToFileName k, Serializable v) =>
-    DiskMap k v -> k -> v -> IO (MapItemResult k v)
+    DiskMap k v -> k -> v -> IO (MapItemResult k v ())
 updateStoredItem m k v =
     mapGetItem m (const . Just $ v) k
 
 -- |
 mapGetItem :: (ToFileName k, Serializable v) =>
-    DiskMap k v -> (v -> Maybe v) -> k -> IO (MapItemResult k v)
+    DiskMap k v -> (v -> Maybe v) -> k -> IO (MapItemResult k v ())
 mapGetItem dm f k = head <$> mapGetItems dm f ( return [k] )
 
 -- |
 mapGetItems :: (ToFileName k, Serializable v) =>
-    DiskMap k v -> (v -> Maybe v) -> STM [k] -> IO [MapItemResult k v]
+    DiskMap k v -> (v -> Maybe v) -> STM [k] -> IO [MapItemResult k v ()]
 mapGetItems dm@(DiskMap _ _ _ _) f stmKeys = updateMapItem dm $ do
     keys <- stmKeys
     forM keys (mapStoredItem dm f)
+
+-- | Update the value at the given key if the supplied function
+--  applied to the value returns Right
+updateIfRight :: (ToFileName k, Serializable v) =>
+    DiskMap k v -> k -> (v -> Either e (v,r)) -> IO (MapItemResult k v (Either e r))
+updateIfRight dm@(DiskMap _ m _ _) key updateFunc =
+    head <$> updateMapItem dm (fmap (: []) stmAction)
+    where
+        updateOnRight oldVal = case updateFunc oldVal of
+            Left  e          -> return $ NotUpdated key oldVal (Left e)
+            Right (newVal,r) -> insertItem key newVal m >>
+                                return (ItemUpdated key newVal (Right r))
+        stmAction = do
+            maybeVal <- getItem' dm key
+            case maybeVal of
+                Just v -> updateOnRight v
+                Nothing -> return NoSuchItem
 
 -- |
 getAllItems :: (ToFileName k, Serializable v) => DiskMap k v -> IO [v]
@@ -181,7 +199,7 @@ makeReadOnly (DiskMap _ _ _ readOnlyTVar) =
 -- |If 'f' applied to the value at 'k' in the map returns a Just value, then update the value
 --  in the map to this value. Return information about what happened.
 mapStoredItem :: (ToFileName k, Serializable v) =>
-    DiskMap k v -> (v -> Maybe v) -> k -> STM (MapItemResult k v)
+    DiskMap k v -> (v -> Maybe v) -> k -> STM (MapItemResult k v ())
 mapStoredItem dm@(DiskMap _ m _ _) f k = do
     maybeItem <- getItem' dm k
     case maybeItem of
@@ -191,9 +209,9 @@ mapStoredItem dm@(DiskMap _ m _ _) f k = do
                     case f oldVal of
                         Just newVal ->
                             updateItem m k newVal >>
-                            return (ItemUpdated k newVal)
+                            return (ItemUpdated k newVal ())
                         Nothing ->
-                            return (NotUpdated  k oldVal)
+                            return (NotUpdated  k oldVal ())
 
 -- | Only relevant for deferred sync
 isSynced :: DiskMap k v -> IO Bool

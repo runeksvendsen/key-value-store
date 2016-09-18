@@ -34,17 +34,17 @@ updateMapItem dm action =
 
 -- |Once the map has been initialized, this should be the only function that updates item contents
 _updateMapItem :: (ToFileName k, Serializable v) =>
-    DiskMap k v -> STM [MapItemResult k v] -> IO [MapItemResult k v]
+    DiskMap k v -> STM [MapItemResult k v a] -> IO [MapItemResult k v a]
 _updateMapItem (DiskMap (MapConfig dir deferSync) _ (SyncState deferredSyncMap _) readOnlyTVar) updateActions = do
     readOnly <- atomically $ readTVar readOnlyTVar
     if not readOnly then do
             updateResults <- atomically $ do updateActions
             let syncToDisk res =
                     case res of
-                        ItemUpdated key val ->
+                        ItemUpdated key val _ ->
                                 if not deferSync then   -- Write to disk immediately
                                     writeEntryToFile dir key val
-                                else   -- Note key, as well as the fact that it lacks sync
+                                else   -- Deferred sync: note key, as well as the fact that it lacks sync
                                     atomically $ Map.insert Sync key deferredSyncMap
                         _ -> return ()
             forM updateResults syncToDisk

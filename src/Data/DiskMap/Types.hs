@@ -42,12 +42,17 @@ data WriteException = PermissionDenied deriving (Show, Eq)
 instance Exception WriteException
 
 -- |
-data MapItemResult k v =
-    -- Key + new item
-    ItemUpdated k v |
-    -- Key + old item
-    NotUpdated  k v |
+data MapItemResult k v a =
+    -- Key + new item + user-defined return value type
+    ItemUpdated k v a |
+    -- Key + old item + user-defined return value type
+    NotUpdated  k v a |
     NoSuchItem
+
+getResult :: MapItemResult k v a -> Maybe a
+getResult (ItemUpdated _ _ a) = Just a
+getResult (NotUpdated  _ _ a) = Just a
+getResult NoSuchItem          = Nothing
 
 -- | Types that can be serialized and deserialized
 class Serializable a where
