@@ -10,7 +10,6 @@ import Control.Monad.STM
 import Control.Exception (IOException)
 import Control.Monad.Catch (try)
 import Control.Monad (forM, filterM, when)
-import Control.Concurrent.Spawn (parMapIO)
 import qualified  STMContainers.Map as Map
 
 
@@ -19,23 +18,15 @@ type FileName = FilePath
 channelMapFromStateFiles ::
     (Serializable v, ToFileName k) =>
     [(k,FilePath)]
-    -> IO (STMMap k v) --(DiskMap k v, Maybe SyncAction)
-channelMapFromStateFiles keyFilePathList =
-    let
-        sequentiallyForEach = forM
-        -- It may be problematic, depending on map size,
-        --  to open all state files at the same time,
-        --  due to max concurrent open files limit,
-        --  so this is turned off  by default.
-        inParallelForEach = flip parMapIO
-    in do
-        -- Restore map
-        m <- atomically Map.new
-        readRes <- sequentiallyForEach keyFilePathList tryReadStateFile
-        atomically $ forM readRes
-            (either error (\(h,s) -> insertDiskSyncedChannel h s m))
+    -> IO (STMMap k v)
+channelMapFromStateFiles keyFilePathList = do
+    -- Restore map
+    m <- atomically Map.new
+    readRes <- forM keyFilePathList tryReadStateFile
+    atomically $ forM readRes
+        (either error (\(h,s) -> insertDiskSyncedChannel h s m))
 
-        return m
+    return m
 
 diskGetStateFiles :: ToFileName k => FilePath -> IO [(k,FilePath)]
 diskGetStateFiles baseDir = do
@@ -47,7 +38,7 @@ getFileList :: FilePath -> IO [FilePath]
 getFileList dir = do
     r <- try $ getDirectoryContents dir
     case r of
-        Left  e    -> fail $ show (e :: IOException) -- "State storage directory \"" ++ dir ++ "\" does not exist."
+        Left  e    -> fail $ show (e :: IOException)
         Right fileList -> return $ filter (\f -> f /= "." && f /= "..") fileList
 
 tryReadStateFile ::
