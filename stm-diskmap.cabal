@@ -1,5 +1,5 @@
 Name:                stm-diskmap
-Version:             0.2.0
+Version:             0.3.0
 Synopsis:            An STM map with added disk sync (persistence)
 Description:         TODO
 License:             PublicDomain

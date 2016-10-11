@@ -12,11 +12,7 @@ An STM 'STMContainers.Map' which syncs each map operation to disk,
  file with the content being the serialized map item. So this is optimized
  for access to relatively large state objects, where storing a file on disk for
  each item in the map is not an issue.
-Optionally, writing to disk can be deferred, such that each map update
- doesn't touch the disk immediately, but instead only when the 'DiskSync'
- IO action, returned by 'newDiskMap', is evaluated.
-This database is ACID-compliant, although the durability property is lost
- if deferred disk write is enabled.
+This database should be ACID-compliant.
 -}
 
 module Data.DiskMap
