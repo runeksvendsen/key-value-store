@@ -4,12 +4,12 @@ import Data.DiskMap.Types
 import Data.DiskMap.Internal.Helpers (insertDiskSyncedChannel)
 
 import System.Directory (getDirectoryContents, removeFile, doesFileExist)
-import Data.Maybe (isJust, isNothing, fromJust)
+import Data.Maybe (isJust, fromJust)
 import qualified Data.ByteString as BS
 import Control.Monad.STM
 import Control.Exception (IOException)
 import Control.Monad.Catch (try)
-import Control.Monad (forM, filterM, when)
+import Control.Monad (forM, filterM)
 import qualified  STMContainers.Map as Map
 
 
@@ -73,3 +73,4 @@ singleStateDeleteDisk stateDir v = removeFile $ mkAbsoluteFilePath stateDir v
 writeEntryToFile :: (Serializable v, ToFileName k) => String -> k -> v -> IO ()
 writeEntryToFile stateDir k v =
     BS.writeFile (mkAbsoluteFilePath stateDir k) (serialize v)
+

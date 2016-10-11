@@ -13,7 +13,7 @@ mapGetItem_Internal :: ToFileName k =>
     -> (MapItem v -> MapItem v)
     -> k
     -> STM (Maybe (MapItem v))
-mapGetItem_Internal (DiskMap _ m _ _) f k  = do
+mapGetItem_Internal (DiskMap _ m _ ) f k  = do
     maybeItem <- fetchItem m k
     case maybeItem of
         (Just item) ->
@@ -31,7 +31,7 @@ fetchItem m k = do
 
 getItem' :: ToFileName k =>
     DiskMap k v -> k -> STM (Maybe v)
-getItem' (DiskMap _ m _ _) k =
+getItem' (DiskMap _ m _ ) k =
     fmap itemContent <$> fetchItem m k
 
 updateItem :: (ToFileName k, Serializable v) => STMMap k v -> k -> v -> STM Bool

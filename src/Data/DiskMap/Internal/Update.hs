@@ -2,15 +2,14 @@ module Data.DiskMap.Internal.Update where
 
 import Data.DiskMap.Types
 import Data.DiskMap.Internal.Helpers (mapGetItem_Internal)
-import Data.DiskMap.Sync.Sync (writeEntryToFile)
-import Data.DiskMap.Sync.Deferred (runSyncAction)
+import Data.DiskMap.Sync.Sync (writeEntryToFile, singleStateDeleteDisk)
 
-import Data.Maybe (isJust, isNothing, fromJust)
+import Data.Maybe (isJust)
 import Control.Monad.STM
-import Control.Monad (forM, filterM, when)
+import Control.Monad (forM, forM_)
 import qualified  STMContainers.Map as Map
-import Control.Concurrent.STM.TVar (TVar, newTVarIO, readTVar, writeTVar)
-import Control.Exception.Base     (Exception, throwIO)
+import Control.Concurrent.STM.TVar (readTVar)
+import Control.Exception.Base     (throwIO)
 
 
 -- | Retrieve map item and simultaneously mark the retrieved item for disk deletion
@@ -21,9 +20,9 @@ markAsBeingDeleted m k =
 
 
 guardReadOnly :: DiskMap k v -> IO (DiskMap k v)
-guardReadOnly dm@(DiskMap (MapConfig _ _) _ _ readOnlyTVar) = do
+guardReadOnly dm@(DiskMap (MapConfig _) _ readOnlyTVar) = do
     readOnly <- atomically $ readTVar readOnlyTVar
-    if not readOnly then do
+    if not readOnly then
             return dm
         else
             throwIO PermissionDenied
@@ -35,17 +34,19 @@ updateMapItem dm action =
 -- |Once the map has been initialized, this should be the only function that updates item contents
 _updateMapItem :: (ToFileName k, Serializable v) =>
     DiskMap k v -> STM [MapItemResult k v a] -> IO [MapItemResult k v a]
-_updateMapItem (DiskMap (MapConfig dir deferSync) _ (SyncState deferredSyncMap _) readOnlyTVar) updateActions = do
+_updateMapItem (DiskMap (MapConfig dir) m readOnlyTVar) updateActions = do
     readOnly <- atomically $ readTVar readOnlyTVar
     if not readOnly then do
-            updateResults <- atomically $ do updateActions
+            updateResults <- atomically $ do
+                resList <- updateActions
+                forM_ resList (setNeedsDiskSync m True)
+                return resList
             let syncToDisk res =
                     case res of
-                        ItemUpdated key val _ ->
-                                if not deferSync then   -- Write to disk immediately
-                                    writeEntryToFile dir key val
-                                else   -- Deferred sync: note key, as well as the fact that it lacks sync
-                                    atomically $ Map.insert Sync key deferredSyncMap
+                        i@(ItemUpdated key val _) -> do
+                            writeEntryToFile dir key val
+                            atomically $ setNeedsDiskSync m False i
+                            return ()
                         _ -> return ()
             forM updateResults syncToDisk
             return updateResults
@@ -54,14 +55,29 @@ _updateMapItem (DiskMap (MapConfig dir deferSync) _ (SyncState deferredSyncMap _
 
 -- |Not finished yet
 _deleteMapItem :: (ToFileName k, Serializable v) =>
-    DiskMap k v -> k -> IO Bool
-_deleteMapItem dm@(DiskMap (MapConfig syncDir deferSync) m (SyncState deferredSyncMap _) _) key = do
-    exists <- fmap isJust $ atomically $ markAsBeingDeleted dm key
+    DiskMap k v -> k -> IO Success
+_deleteMapItem (DiskMap (MapConfig syncDir) m _) key = do
+    exists <- fmap isJust $ atomically $ do
+        maybeItem <- Map.lookup key m
+        Map.delete key m
+        return maybeItem
     if not exists then
             return False
         else do
-            if not deferSync then
-                    runSyncAction syncDir m (key,Delete) >> return ()
-                else
-                    atomically $ Map.insert Delete key deferredSyncMap
+            singleStateDeleteDisk syncDir key
             return True
+
+
+setNeedsDiskSync :: (ToFileName k, Serializable v) =>
+    STMMap k v -> Bool -> MapItemResult k v a -> STM (MapItemResult k v a)
+setNeedsDiskSync m needsSync miRes = do
+    case miRes of
+        res@(ItemUpdated k _ _) -> do
+            item <- Map.lookup k m
+            case item of
+                Just i  -> do
+                    Map.insert (i { needsDiskSync = needsSync }) k m
+                    return res
+                Nothing -> error "BUG: 'ItemUpdated' result but key not present"
+        whatever -> return whatever
+

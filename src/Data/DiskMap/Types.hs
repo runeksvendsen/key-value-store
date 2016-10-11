@@ -1,41 +1,30 @@
 module Data.DiskMap.Types where
 
 import Data.Hashable
-import Data.Maybe (isJust, isNothing, fromJust)
 import qualified Data.ByteString.Base16 as B16
 import qualified Data.ByteString.Char8 as C
 import qualified Data.ByteString as BS
-import Control.Monad (forM, filterM, when)
 import qualified  STMContainers.Map as Map
 import Control.Concurrent.STM.TVar (TVar)
 import Control.Exception.Base     (Exception)
-import Control.Concurrent.MVar (MVar)
 
 
 -- |
 data DiskMap k v = DiskMap
     MapConfig
     (STMMap k v)
-    (SyncState k)
-    (TVar Bool)     -- Read-only
+    (TVar Bool)     -- Is read-only?
 
 type STMMap k v = Map.Map k (MapItem v)
 
 data MapItem v = Item {
     itemContent :: v
-    ,needsDiskSync          :: Bool      -- DEPRECATED
+    ,needsDiskSync          :: Bool
     ,isBeingDeletedFromDisk :: Bool }
     deriving Show
 
-data MapConfig = MapConfig FilePath Bool
+data MapConfig = MapConfig FilePath
 
-data SyncState k = SyncState
-    (Map.Map k SyncOp)  -- Deferred sync map
-    (MVar ())           -- If empty: sync is in progress
-
--- |Disk sync IO action. Returns the number of disk items that were
---  either updated or deleted.
-type SyncAction = IO Integer
 
 data CreateResult = Created | AlreadyExists deriving (Show, Eq)
 data WriteException = PermissionDenied deriving (Show, Eq)
