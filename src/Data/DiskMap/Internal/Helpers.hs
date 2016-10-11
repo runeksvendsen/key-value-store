@@ -20,12 +20,12 @@ mapGetItem_Internal (DiskMap _ m _ ) f k  = do
             Map.insert (f item) k m >> return maybeItem
         Nothing -> return Nothing
 
-
 fetchItem :: ToFileName k =>
     STMMap k v -> k -> STM (Maybe (MapItem v))
 fetchItem m k = do
     item <- Map.lookup k m
     case item of
+        Just Item { needsDiskSync = True } -> retry
         Just Item { isBeingDeletedFromDisk = True } -> return Nothing
         _ -> return item
 
