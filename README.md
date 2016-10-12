@@ -1,9 +1,11 @@
-# Software transaction memory-map with added persistence
+# Simple, multi-threaded key/value store
+## Software Transactional Memory-map with added persistence
 
-An STM 'STMContainers.Map' which syncs each map key/item to a file on disk, from which the map can be restored later. Each key is stored as a file with the content being the serialized map item. So this is optimized for relatively large map items, where storing a file on disk for each item in the map is not an issue.
+### WARNING
+*Experimental software - I use it mostly in development, as a simple, fast, local key-value store.*
 
-Optionally, writing to disk can be deferred, such that each map update doesn't touch the disk immediately, but instead only when the 'DiskSync' IO action, returned by 'newDiskMap', is evaluated.
+## What is this?
+An [STMContainers.Map](https://www.stackage.org/haddock/lts-7.3/stm-containers-0.2.15/STMContainers-Map.html) which syncs each map key/value to a file on disk, from which the map can be restored later. Each key/value is stored as a file, with file name being the hex-encoded key and the file content the serialized value. So this is optimized for relatively large map items, where storing a single file on disk for each item in the map is not an issue (trillions of items would probably be too much).
 
-This database is ACID-compliant, although the durability property is lost if deferred disk write is enabled.
+This database is ACID-compliant (assuming no bugs). The STM map provides a layer of atomicity, allowing multiple map items to be updated in a single atomic operation.
 
-The STM map provides a layer of atomicity, allowing multiple map items to be updated in a single atomic operation.
