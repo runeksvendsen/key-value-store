@@ -7,3 +7,5 @@ Optionally, writing to disk can be deferred, such that each map update doesn't t
 This database is ACID-compliant, although the durability property is lost if deferred disk write is enabled.
 
 The STM map provides a layer of atomicity, allowing multiple map items to be updated in a single atomic operation.
+
+**WARNING**: *Not ready for production* (I use it mostly for testing, as a fast, local key-value store) 
