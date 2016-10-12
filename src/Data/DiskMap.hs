@@ -18,7 +18,7 @@ This database should be ACID-compliant.
 module Data.DiskMap
 (
     DiskMap,
-    newDiskMap, addItem, getItem, updateStoredItem,
+    newDiskMap, addItem, getItem, updateStoredItem, addOverwriteItem,
     CreateResult(..),
     mapGetItem, mapGetItems, MapItemResult(..),
     updateIfRight,getResult,
@@ -184,7 +184,7 @@ makeReadOnly (DiskMap _ _ readOnlyTVar) =
 mapStoredItem :: (ToFileName k, Serializable v) =>
     DiskMap k v -> (v -> Maybe v) -> k -> STM (MapItemResult k v ())
 mapStoredItem dm@(DiskMap _ m _) maybeUpdateFunc k =
-    let maybeUpdate =
+    let maybeUpdate oldVal =
             case maybeUpdateFunc oldVal of
                 Just newVal ->
                     updateItem m k newVal >>
@@ -195,7 +195,7 @@ mapStoredItem dm@(DiskMap _ m _) maybeUpdateFunc k =
         maybeItem <- getItemNonAtomic dm k
         case maybeItem of
             Nothing     -> return NoSuchItem
-            Just oldVal -> maybeUpdate
+            Just oldVal -> maybeUpdate oldVal
 
 
 
