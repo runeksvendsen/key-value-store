@@ -35,6 +35,7 @@ Library
   default-language:     Haskell2010
   other-modules:        Data.DiskMap.Internal.Helpers
                         Data.DiskMap.Internal.Update
+                        Data.DiskMap.Internal.Types
                         Data.DiskMap.Sync.Sync
                         Data.DiskMap.Types
 
