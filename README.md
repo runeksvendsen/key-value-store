@@ -1,4 +1,4 @@
-# Software transaction memory-map with added persistence
+# Software Transactional Memory-map with added persistence
 
 ### WARNING
 Experimental software - I use it mostly in development, as a simple, fast, local key-value store.
