@@ -1,29 +1,18 @@
-module Data.DiskMap.Types where
+module Data.DiskMap.Types
+(
+    module Data.DiskMap.Types
+  , module Data.DiskMap.Internal.Types
+)
+ where
+
+import Data.DiskMap.Internal.Types
 
 import Data.Hashable
 import qualified Data.ByteString.Base16 as B16
 import qualified Data.ByteString.Char8 as C
 import qualified Data.ByteString as BS
-import qualified  STMContainers.Map as Map
-import Control.Concurrent.STM.TVar (TVar)
 import Control.Exception.Base     (Exception)
 
-
--- |
-data DiskMap k v = DiskMap
-    MapConfig
-    (STMMap k v)
-    (TVar Bool)     -- Is read-only?
-
-type STMMap k v = Map.Map k (MapItem v)
-
-data MapItem v = Item {
-    itemContent :: v
-    ,needsDiskSync          :: Bool
-    ,isBeingDeletedFromDisk :: Bool }
-    deriving Show
-
-data MapConfig = MapConfig FilePath
 
 
 data CreateResult = Created | AlreadyExists deriving (Show, Eq)
@@ -34,14 +23,15 @@ instance Exception WriteException
 data MapItemResult k v a =
     -- Key + new item + user-defined return value type
     ItemUpdated k v a |
-    -- Key + old item + user-defined return value type
+    -- Key +     item + user-defined return value type
     NotUpdated  k v a |
     NoSuchItem
 
 getResult :: MapItemResult k v a -> Maybe a
 getResult (ItemUpdated _ _ a) = Just a
 getResult (NotUpdated  _ _ a) = Just a
-getResult NoSuchItem          = Nothing
+getResult  NoSuchItem         = Nothing
+
 
 -- | Types that can be serialized and deserialized
 class Serializable a where
@@ -58,7 +48,5 @@ class (Serializable k, Eq k, Hashable k) => ToFileName k where
 
 type Success = Bool
 
--- Sync
-data SyncOp = Sync | Delete
 
 

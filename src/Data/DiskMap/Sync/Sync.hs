@@ -58,14 +58,12 @@ getHashAndFilePath baseDir f  = mkTuple <$>
     Just (baseDir ++ "/" ++ f)
         where mkTuple a b = (a,b)
 
-
 mkAbsoluteFilePath :: ToFileName k => FilePath -> k -> FilePath
 mkAbsoluteFilePath stateDir key =
     stateDir ++ toFileName key
 
 validFileName :: ToFileName k => FilePath -> Maybe k
 validFileName fn = either (const Nothing) Just (fromFileName fn)
-----
 
 singleStateDeleteDisk :: ToFileName k => FilePath -> k -> IO ()
 singleStateDeleteDisk stateDir v = removeFile $ mkAbsoluteFilePath stateDir v

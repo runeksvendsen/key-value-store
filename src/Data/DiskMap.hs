@@ -42,7 +42,7 @@ import Data.DiskMap.Internal.Update (updateMapItem)
 import qualified ListT as LT
 import Data.Hashable
 import Control.Monad.STM
-import Control.Monad (forM)
+import Control.Monad (forM, void)
 import qualified  STMContainers.Map as Map
 import Control.Concurrent.STM.TVar (newTVarIO, writeTVar)
 import Data.List
@@ -65,14 +65,14 @@ newDiskMap syncDir = do
 -- |
 getItem :: ToFileName k =>
     DiskMap k v -> k -> IO (Maybe v)
-getItem m = atomically . getItem' m
+getItem m = atomically . getItemNonAtomic m
 
 -- |
 addItem :: (ToFileName k, Serializable v) =>
     DiskMap k v -> k -> v -> IO CreateResult
 addItem dm@(DiskMap _ m _) k v = do
     res <- fmap head $ updateMapItem dm $
-        getItem' dm k >>= updateIfNotExist
+        getItemNonAtomic dm k >>= updateIfNotExist
     case res of
         ItemUpdated _ _ _ -> return Created
         NotUpdated  _ _ _ -> return AlreadyExists
@@ -82,8 +82,18 @@ addItem dm@(DiskMap _ m _) k v = do
             Nothing   ->
                 insertItem k v m >>
                 return [ItemUpdated k v ()]    -- Doesn't already exist
-            Just oldV ->
-                return [NotUpdated  k oldV ()] -- Already exists
+            Just existingVal ->
+                return [NotUpdated  k existingVal ()] -- Already exists
+
+-- |
+addOverwriteItem :: (ToFileName k, Serializable v) =>
+    DiskMap k v -> k -> v -> IO ()
+addOverwriteItem dm@(DiskMap _ m _) k v =
+    void $ updateMapItem dm updateItemAction
+    where
+        updateItemAction = do
+            insertItem k v m
+            return [ItemUpdated k v ()]
 
 -- |
 updateStoredItem :: (ToFileName k, Serializable v) =>
@@ -108,14 +118,14 @@ mapGetItems dm@(DiskMap _ _ _) f stmKeys = updateMapItem dm $ do
 updateIfRight :: (ToFileName k, Serializable v) =>
     DiskMap k v -> k -> (v -> Either r (v,r)) -> IO (MapItemResult k v r)
 updateIfRight dm@(DiskMap _ m _) key updateFunc =
-    head <$> updateMapItem dm (fmap (: []) stmAction)
+    head <$> updateMapItem dm (fmap (: []) itemUpdateAction)
     where
         updateOnRight oldVal = case updateFunc oldVal of
             Left  r          -> return $ NotUpdated key oldVal r
             Right (newVal,r) -> insertItem key newVal m >>
                                 return (ItemUpdated key newVal r)
-        stmAction = do
-            maybeVal <- getItem' dm key
+        itemUpdateAction = do
+            maybeVal <- getItemNonAtomic dm key
             case maybeVal of
                 Just v -> updateOnRight v
                 Nothing -> return NoSuchItem
@@ -126,10 +136,10 @@ getAllItems (DiskMap _ m _) =
     atomically $ map (itemContent . snd) <$> LT.toList (Map.stream m)
 
 -- | Scan through a sorted list of all items in the map, and accumulate items
---  to be returned while the scan function returns 'True'.
+--  to be returned while the supplied scan function returns 'True'.
 collectSortedItemsWhile :: (ToFileName k, Serializable v) =>
     DiskMap k v
-    -> (v -> v -> Ordering) -- ^ Sort all items in the map by this function
+    -> (v -> v -> Ordering) -- ^ Before iterating through all items, sort them using this function
     -> ([v] -> v -> Bool)   -- ^ Scan sorted items one-by-one, return True to accumulate and False to stop scanning and return all accumulated items
     -> STM [v]
 collectSortedItemsWhile (DiskMap _ m _) sortFunc scanFunc =
@@ -169,22 +179,24 @@ makeReadOnly :: DiskMap k v -> IO ()
 makeReadOnly (DiskMap _ _ readOnlyTVar) =
     atomically $ writeTVar readOnlyTVar True
 
--- |If 'f' applied to the value at 'k' in the map returns a Just value, then update the value
---  in the map to this value. Return information about what happened.
+-- |If the update function applied to the value at the specified key returns a Just value,
+-- then update map with this value. Return information about what happened.
 mapStoredItem :: (ToFileName k, Serializable v) =>
     DiskMap k v -> (v -> Maybe v) -> k -> STM (MapItemResult k v ())
-mapStoredItem dm@(DiskMap _ m _) f k = do
-    maybeItem <- getItem' dm k
-    case maybeItem of
-        Nothing  -> return NoSuchItem
-        Just oldVal -> maybeUpdate
-            where maybeUpdate =
-                    case f oldVal of
-                        Just newVal ->
-                            updateItem m k newVal >>
-                            return (ItemUpdated k newVal ())
-                        Nothing ->
-                            return (NotUpdated  k oldVal ())
+mapStoredItem dm@(DiskMap _ m _) maybeUpdateFunc k =
+    let maybeUpdate =
+            case maybeUpdateFunc oldVal of
+                Just newVal ->
+                    updateItem m k newVal >>
+                    return (ItemUpdated k newVal ())
+                Nothing ->
+                    return (NotUpdated  k oldVal ())
+    in do
+        maybeItem <- getItemNonAtomic dm k
+        case maybeItem of
+            Nothing     -> return NoSuchItem
+            Just oldVal -> maybeUpdate
+
 
 
 
