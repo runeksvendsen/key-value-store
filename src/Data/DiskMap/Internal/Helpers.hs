@@ -26,7 +26,9 @@ fetchItem :: ToFileName k =>
 fetchItem m k = do
     item <- Map.lookup k m
     case item of
+        -- This means another thread is in the process of syncing the key/value to disk
         Just Item { needsDiskSync = True } -> retry
+        -- This means another thread is in the process of deleting the key/value from disk
         Just Item { isBeingDeletedFromDisk = True } -> return Nothing
         _ -> return item
 
@@ -65,3 +67,4 @@ accumulateWhileImpl accumList (x:xs) accumulateThis =
         accumulateWhileImpl (accumList ++ [x]) xs accumulateThis
     else
         accumList
+

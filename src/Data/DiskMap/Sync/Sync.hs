@@ -71,4 +71,3 @@ singleStateDeleteDisk stateDir v = removeFile $ mkAbsoluteFilePath stateDir v
 writeEntryToFile :: (Serializable v, ToFileName k) => String -> k -> v -> IO ()
 writeEntryToFile stateDir k v =
     BS.writeFile (mkAbsoluteFilePath stateDir k) (serialize v)
-

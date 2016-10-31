@@ -18,7 +18,8 @@ This database should be ACID-compliant.
 module Data.DiskMap
 (
     DiskMap,
-    newDiskMap, addItem, getItem, updateStoredItem, addOverwriteItem,
+    createDiskMap,
+    addItem, getItem, updateStoredItem, addOverwriteItem,
     CreateResult(..),
     mapGetItem, mapGetItems, MapItemResult(..),
     updateIfRight,getResult,
@@ -50,17 +51,16 @@ import Data.List
 
 
 -- |
-newDiskMap :: (ToFileName k, Serializable v) =>
+createDiskMap :: (ToFileName k, Serializable v) =>
     FilePath             -- ^ Directory where state files will be kept. The map is restored from this directory as well.
     -> IO (DiskMap k v)  -- ^ New map
-newDiskMap syncDir = do
+createDiskMap syncDir = do
     -- Restore STMMap from disk files
     m <- channelMapFromStateFiles =<< diskGetStateFiles syncDir
     -- read-only TVar
     readOnly <- newTVarIO False
     let diskMap = DiskMap (MapConfig syncDir) m readOnly
     return diskMap
-
 
 -- |
 getItem :: ToFileName k =>
@@ -74,9 +74,9 @@ addItem dm@(DiskMap _ m _) k v = do
     res <- fmap head $ updateMapItem dm $
         getItemNonAtomic dm k >>= updateIfNotExist
     case res of
-        ItemUpdated _ _ _ -> return Created
-        NotUpdated  _ _ _ -> return AlreadyExists
-        NoSuchItem        -> error "BUG: 'updateIfNotExist' should never return 'NoSuchItem'"
+        ItemUpdated{} -> return Created
+        NotUpdated{}  -> return AlreadyExists
+        NoSuchItem    -> error "BUG: 'updateIfNotExist' should never return 'NoSuchItem'"
     where
         updateIfNotExist maybeItem = case maybeItem of
             Nothing   ->
@@ -134,6 +134,10 @@ updateIfRight dm@(DiskMap _ m _) key updateFunc =
 getAllItems :: (ToFileName k, Serializable v) => DiskMap k v -> IO [v]
 getAllItems (DiskMap _ m _) =
     atomically $ map (itemContent . snd) <$> LT.toList (Map.stream m)
+
+
+-- serializeMap :: (ToFileName k, Serializable v) => DiskMap k v -> BS.ByteString
+-- serializeMap = undefined
 
 -- | Scan through a sorted list of all items in the map, and accumulate items
 --  to be returned while the supplied scan function returns 'True'.
